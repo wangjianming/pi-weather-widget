@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+
+import {
+  CACHE_MAX_AGE_MS,
+  FUTURE_CLOCK_SKEW_MS,
+  isFreshSnapshot,
+  readFreshCache,
+  resolveCachePath,
+  writeCacheAtomic,
+} from "../cache.ts";
+import { makeSnapshot } from "./fixtures.ts";
+
+async function withTempDirectory(
+  run: (directory: string) => Promise<void>,
+): Promise<void> {
+  const directory = await mkdtemp(join(tmpdir(), "pi-weather-widget-"));
+  try {
+    await run(directory);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+test("resolveCachePath honors PI_CODING_AGENT_DIR and the default home", () => {
+  assert.equal(
+    resolveCachePath({ PI_CODING_AGENT_DIR: "D:\\pi-config" }, "C:\\Users\\I"),
+    join("D:\\pi-config", "cache", "weather-widget.json"),
+  );
+  assert.equal(
+    resolveCachePath({}, "C:\\Users\\I"),
+    join("C:\\Users\\I", ".pi", "agent", "cache", "weather-widget.json"),
+  );
+});
+
+test("a snapshot is fresh only while age is strictly below three hours", () => {
+  const fetchedAtMs = Date.parse("2026-08-19T06:00:00.000Z");
+  const snapshot = makeSnapshot(new Date(fetchedAtMs).toISOString());
+  assert.equal(isFreshSnapshot(snapshot, fetchedAtMs + CACHE_MAX_AGE_MS - 1), true);
+  assert.equal(isFreshSnapshot(snapshot, fetchedAtMs + CACHE_MAX_AGE_MS), false);
+  assert.equal(isFreshSnapshot(snapshot, fetchedAtMs + CACHE_MAX_AGE_MS + 1), false);
+});
+
+test("future clock skew up to five minutes is tolerated but larger skew is invalid", () => {
+  const nowMs = Date.parse("2026-08-19T06:00:00.000Z");
+  assert.equal(
+    isFreshSnapshot(
+      makeSnapshot(new Date(nowMs + FUTURE_CLOCK_SKEW_MS).toISOString()),
+      nowMs,
+    ),
+    true,
+  );
+  assert.equal(
+    isFreshSnapshot(
+      makeSnapshot(new Date(nowMs + FUTURE_CLOCK_SKEW_MS + 1).toISOString()),
+      nowMs,
+    ),
+    false,
+  );
+});
+
+test("readFreshCache returns valid data and deletes expired data", async () => {
+  await withTempDirectory(async (directory) => {
+    const cachePath = join(directory, "cache", "weather-widget.json");
+    const snapshot = makeSnapshot("2026-08-19T06:00:00.000Z");
+    await writeCacheAtomic(cachePath, snapshot);
+
+    assert.deepEqual(
+      await readFreshCache(cachePath, Date.parse("2026-08-19T08:59:59.999Z")),
+      snapshot,
+    );
+    assert.equal(
+      await readFreshCache(cachePath, Date.parse("2026-08-19T09:00:00.000Z")),
+      undefined,
+    );
+    await assert.rejects(readFile(cachePath, "utf8"), { code: "ENOENT" });
+  });
+});
+
+test("readFreshCache silently removes malformed cache JSON", async () => {
+  await withTempDirectory(async (directory) => {
+    const cachePath = join(directory, "weather-widget.json");
+    await writeFile(cachePath, "{not-json", "utf8");
+    assert.equal(await readFreshCache(cachePath, Date.now()), undefined);
+    await assert.rejects(readFile(cachePath, "utf8"), { code: "ENOENT" });
+  });
+});
+
+test("writeCacheAtomic leaves one complete JSON file and no temporary files", async () => {
+  await withTempDirectory(async (directory) => {
+    const cachePath = join(directory, "cache", "weather-widget.json");
+    const snapshot = makeSnapshot();
+    await writeCacheAtomic(cachePath, snapshot);
+    assert.deepEqual(JSON.parse(await readFile(cachePath, "utf8")), snapshot);
+    assert.deepEqual(await readdir(join(directory, "cache")), ["weather-widget.json"]);
+  });
+});
