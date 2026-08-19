@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import type { WeatherSnapshot } from "./types.ts";
+import { normalizeTerminalSafeText, type WeatherSnapshot } from "./types.ts";
 
 export const CACHE_MAX_AGE_MS = 3 * 60 * 60 * 1_000;
 export const FUTURE_CLOCK_SKEW_MS = 5 * 60 * 1_000;
@@ -13,7 +13,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isOptionalText(value: unknown): boolean {
-  return value === undefined || (typeof value === "string" && value.trim().length > 0);
+  return value === undefined || normalizeTerminalSafeText(value) !== undefined;
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -37,7 +37,7 @@ export function isWeatherSnapshot(value: unknown): value is WeatherSnapshot {
     isOptionalText(location.region) &&
     isOptionalText(location.country) &&
     typeof location.displayName === "string" &&
-    location.displayName.trim().length > 0 &&
+    normalizeTerminalSafeText(location.displayName) !== undefined &&
     isOptionalText(location.timezone) &&
     isFiniteNumber(location.latitude) &&
     location.latitude >= -90 &&

@@ -11,6 +11,7 @@ A global Pi extension that resolves the current public IP to an approximate city
 - Hides the widget completely when no valid weather exists.
 - Drops wind, humidity, apparent temperature, and description in that order on narrow terminals.
 - Supports only Pi TUI mode; print and JSON modes do not start weather work.
+- Rejects terminal control characters in remote or cached text before rendering.
 
 ## Data sources
 
@@ -30,7 +31,7 @@ IPWhois receives the caller's public IP. Open-Meteo receives the resolved coordi
 ```powershell
 npm test
 $env:PI_OFFLINE = "1"
-pi -e .\index.ts --list-models *> $null
+pi --no-extensions -e .\index.ts --list-models *> $null
 Remove-Item Env:PI_OFFLINE
 ```
 

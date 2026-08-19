@@ -63,6 +63,16 @@ test("parseLocation selects the first non-empty city, region, or country", () =>
   );
 });
 
+test("parseLocation ignores terminal-control text and falls back safely", () => {
+  const location = parseLocation({
+    ...locationPayload,
+    city: "\u001b]0;owned\u0007西安",
+    region: "陕西",
+  });
+  assert.equal(location.city, undefined);
+  assert.equal(location.displayName, "陕西");
+});
+
 test("parseLocation rejects failed, missing-name, and out-of-range data", () => {
   assert.throws(() => parseLocation({ success: false, message: "denied" }), /denied/);
   assert.throws(

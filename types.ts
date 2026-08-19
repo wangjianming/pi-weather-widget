@@ -1,3 +1,12 @@
+export const TERMINAL_CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/u;
+
+export function normalizeTerminalSafeText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (text.length === 0 || TERMINAL_CONTROL_CHARACTERS.test(text)) return undefined;
+  return text;
+}
+
 export interface LocationInfo {
   city?: string;
   region?: string;

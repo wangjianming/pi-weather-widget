@@ -127,6 +127,10 @@ test("readFreshCache rejects and removes invalid nested snapshot values", async 
   const snapshot = makeSnapshot();
   const invalidSnapshots = [
     { ...snapshot, location: { ...snapshot.location, latitude: 91 } },
+    {
+      ...snapshot,
+      location: { ...snapshot.location, displayName: "\u001b[31m西安" },
+    },
     { ...snapshot, weather: { ...snapshot.weather, relativeHumidityPercent: 101 } },
     { ...snapshot, weather: { ...snapshot.weather, weatherCode: 0.5 } },
     { ...snapshot, weather: { ...snapshot.weather, windSpeedKmh: -1 } },

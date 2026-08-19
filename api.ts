@@ -1,8 +1,9 @@
-import type {
-  CurrentWeather,
-  FetchLike,
-  LocationInfo,
-  WeatherSnapshot,
+import {
+  normalizeTerminalSafeText,
+  type CurrentWeather,
+  type FetchLike,
+  type LocationInfo,
+  type WeatherSnapshot,
 } from "./types.ts";
 
 export const IPWHOIS_URL =
@@ -25,9 +26,7 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
 }
 
 function optionalText(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const text = value.trim();
-  return text.length > 0 ? text : undefined;
+  return normalizeTerminalSafeText(value);
 }
 
 function finiteNumber(value: unknown, label: string): number {
