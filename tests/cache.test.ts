@@ -89,6 +89,62 @@ test("readFreshCache silently removes malformed cache JSON", async () => {
   });
 });
 
+test("readFreshCache rejects and removes parseable non-ISO timestamps", async () => {
+  await withTempDirectory(async (directory) => {
+    const cachePath = join(directory, "weather-widget.json");
+    await writeFile(
+      cachePath,
+      JSON.stringify(makeSnapshot("Tue, 19 Aug 2026 06:00:00 GMT")),
+      "utf8",
+    );
+
+    assert.equal(
+      await readFreshCache(cachePath, Date.parse("2026-08-19T07:00:00.000Z")),
+      undefined,
+    );
+    await assert.rejects(readFile(cachePath, "utf8"), { code: "ENOENT" });
+  });
+});
+
+test("readFreshCache rejects and removes normalized invalid calendar dates", async () => {
+  await withTempDirectory(async (directory) => {
+    const cachePath = join(directory, "weather-widget.json");
+    await writeFile(
+      cachePath,
+      JSON.stringify(makeSnapshot("2026-02-30T06:00:00.000Z")),
+      "utf8",
+    );
+
+    assert.equal(
+      await readFreshCache(cachePath, Date.parse("2026-03-02T07:00:00.000Z")),
+      undefined,
+    );
+    await assert.rejects(readFile(cachePath, "utf8"), { code: "ENOENT" });
+  });
+});
+
+test("readFreshCache rejects and removes invalid nested snapshot values", async () => {
+  const snapshot = makeSnapshot();
+  const invalidSnapshots = [
+    { ...snapshot, location: { ...snapshot.location, latitude: 91 } },
+    { ...snapshot, weather: { ...snapshot.weather, relativeHumidityPercent: 101 } },
+    { ...snapshot, weather: { ...snapshot.weather, weatherCode: 0.5 } },
+    { ...snapshot, weather: { ...snapshot.weather, windSpeedKmh: -1 } },
+  ];
+
+  for (const invalidSnapshot of invalidSnapshots) {
+    await withTempDirectory(async (directory) => {
+      const cachePath = join(directory, "weather-widget.json");
+      await writeFile(cachePath, JSON.stringify(invalidSnapshot), "utf8");
+      assert.equal(
+        await readFreshCache(cachePath, Date.parse("2026-08-19T07:00:00.000Z")),
+        undefined,
+      );
+      await assert.rejects(readFile(cachePath, "utf8"), { code: "ENOENT" });
+    });
+  }
+});
+
 test("writeCacheAtomic leaves one complete JSON file and no temporary files", async () => {
   await withTempDirectory(async (directory) => {
     const cachePath = join(directory, "cache", "weather-widget.json");

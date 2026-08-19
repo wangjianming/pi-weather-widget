@@ -20,13 +20,19 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function parseIsoTimestamp(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return new Date(timestamp).toISOString() === value ? timestamp : undefined;
+}
+
 export function isWeatherSnapshot(value: unknown): value is WeatherSnapshot {
   if (!isRecord(value) || !isRecord(value.location) || !isRecord(value.weather)) return false;
   const { location, weather } = value;
-  const fetchedAt = typeof value.fetchedAt === "string" ? Date.parse(value.fetchedAt) : Number.NaN;
 
   return (
-    Number.isFinite(fetchedAt) &&
+    parseIsoTimestamp(value.fetchedAt) !== undefined &&
     isOptionalText(location.city) &&
     isOptionalText(location.region) &&
     isOptionalText(location.country) &&
@@ -55,7 +61,8 @@ export function isWeatherSnapshot(value: unknown): value is WeatherSnapshot {
 
 export function cacheAgeMs(snapshot: WeatherSnapshot, nowMs: number): number | undefined {
   if (!isWeatherSnapshot(snapshot) || !Number.isFinite(nowMs)) return undefined;
-  const fetchedAtMs = Date.parse(snapshot.fetchedAt);
+  const fetchedAtMs = parseIsoTimestamp(snapshot.fetchedAt);
+  if (fetchedAtMs === undefined) return undefined;
   const futureSkew = fetchedAtMs - nowMs;
   if (futureSkew > FUTURE_CLOCK_SKEW_MS) return undefined;
   return Math.max(0, nowMs - fetchedAtMs);
