@@ -1,44 +1,80 @@
 # Pi Weather Widget
 
-A global Pi extension that resolves the current public IP to an approximate city and coordinates, fetches current weather, and displays one responsive colored line above Pi's editor.
+**[中文文档](README.zh-CN.md)** | English
 
-## Behavior
+A zero-config global extension for [pi](https://github.com/earendil-works/pi-coding-agent) that shows the current weather as a single colored line above the input editor.
 
-- Starts cache and network work in the background without blocking Pi.
-- Refreshes the complete IP-to-weather chain every 30 minutes.
-- Uses cache only while it is less than three hours old.
-- Keeps valid weather with a `⚠ 数据已过期` label after a failed refresh.
-- Hides the widget completely when no valid weather exists.
-- Drops wind, humidity, apparent temperature, and description in that order on narrow terminals.
-- Supports only Pi TUI mode; print and JSON modes do not start weather work.
-- Rejects terminal control characters in remote or cached text before rendering.
+It resolves your approximate location from your public IP (via [IPWhois](https://ipwho.is/)) and fetches current conditions from [Open-Meteo](https://open-meteo.com/). **No API key required.**
 
-## Data sources
+```
+☀ 東京都 27°C 体感 31°C 大部晴朗 · 湿度 77% · 风速 5 km/h
+```
 
-- IP geolocation: `https://ipwho.is/`
-- Weather: `https://open-meteo.com/`
+## Features
 
-No API key is required. IP location is approximate and can reflect a VPN, proxy, or ISP exit point.
+- **Zero config** — no API keys, no settings; install and reload.
+- **Non-blocking** — all cache and network work runs in the background; Pi startup and conversations are never delayed.
+- **Self-updating** — refreshes the full IP → location → weather chain every 30 minutes.
+- **Cached** — results are cached on disk and reused while less than 3 hours old.
+- **Graceful degradation** — on refresh failure, valid weather stays visible with a `⚠ 数据已过期` (stale) label; with no valid data the widget hides completely.
+- **Responsive** — on narrow terminals it drops fields in order: wind → humidity → apparent temperature → description.
+- **Colored** — icons and colors adapt to the weather family (clear / cloud / fog / rain / snow / thunder) and temperature band (ice → extreme), using your active Pi theme.
+- **Safe** — terminal control characters in remote or cached text are rejected before rendering.
 
-## Cache and privacy
+Only Pi TUI mode is supported; `print` and JSON modes start no weather work.
 
-The cache is `${PI_CODING_AGENT_DIR:-~/.pi/agent}/cache/weather-widget.json`. It stores the approximate location, coordinates, current weather, observation time, and successful fetch time. It does not store the public IP, API keys, Pi messages, or telemetry.
+## Requirements
 
-IPWhois receives the caller's public IP. Open-Meteo receives the resolved coordinates and normal HTTP metadata.
+- pi (coding agent) with extension support
+- Node.js ≥ 24
 
-## Verification
+## Installation
 
-```powershell
+Clone the repo into Pi's global extensions directory:
+
+```bash
+git clone https://github.com/wangjianming/pi-weather-widget.git ~/.pi/agent/extensions/pi-weather-widget
+```
+
+Then restart pi, or run `/reload` inside a session.
+
+To remove, delete the directory and `/reload` again.
+
+## How it works
+
+| File | Responsibility |
+| --- | --- |
+| `index.ts` | Extension entry; wires lifecycle to `session_start` / `session_shutdown` and renders the widget |
+| `api.ts` | IPWhois + Open-Meteo client with strict response validation and per-request timeouts (10 s) |
+| `runtime.ts` | Refresh/expiry scheduling, abort handling, stale-or-hide fallback |
+| `cache.ts` | Atomic (temp-file + rename) JSON cache with a strict 3-hour max age |
+| `formatter.ts` | Responsive colored single-line rendering |
+| `weather-codes.ts` | WMO weather code → symbol / description / family mapping |
+| `types.ts` | Shared types and terminal-safe text normalization |
+
+Data flow on startup:
+
+1. Read the cache; if it is fresh (< 3 h), show it immediately.
+2. Refresh in the background; on success, update the display and rewrite the cache.
+3. On failure, keep showing cached weather with a stale label until it expires; then hide and delete the cache.
+4. Repeat the refresh every 30 minutes.
+
+## Tests
+
+The test suite has no external dependencies (Node built-ins only):
+
+```bash
 npm test
-$env:PI_OFFLINE = "1"
-pi --no-extensions -e .\index.ts --list-models *> $null
-Remove-Item Env:PI_OFFLINE
 ```
 
-For an intentional live API smoke test:
+## Privacy & cache
 
-```powershell
-node --input-type=module -e "import('./api.ts').then(async m => console.log(JSON.stringify(await m.fetchWeatherSnapshot(), null, 2)))"
-```
+- Cache location: `${PI_CODING_AGENT_DIR:-~/.pi/agent}/cache/weather-widget.json`
+- The cache stores only the approximate location, coordinates, current weather, observation time, and fetch time.
+- It never stores your public IP, API keys, pi messages, or telemetry.
+- IPWhois sees your public IP; Open-Meteo receives the resolved coordinates plus normal HTTP metadata.
+- IP-based location is approximate and may reflect a VPN, proxy, or ISP exit point.
 
-After installation, run `/reload` in Pi. With no valid cache, the widget stays hidden until both API requests succeed.
+## License
+
+No license has been chosen yet. All rights reserved by default; contact the author if you want to reuse the code.
