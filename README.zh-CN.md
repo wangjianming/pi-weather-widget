@@ -77,4 +77,4 @@ npm test
 
 ## 许可证
 
-尚未选择许可证。默认保留所有权利；如需复用代码请联系作者。
+[MIT](LICENSE) © 2026 wangjianming

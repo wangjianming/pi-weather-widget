@@ -77,4 +77,4 @@ npm test
 
 ## License
 
-No license has been chosen yet. All rights reserved by default; contact the author if you want to reuse the code.
+[MIT](LICENSE) © 2026 wangjianming
