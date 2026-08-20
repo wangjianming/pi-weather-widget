@@ -33,6 +33,8 @@ export interface WeatherSnapshot {
   location: LocationInfo;
   weather: CurrentWeather;
   fetchedAt: string;
+  /** 生成本快照的 Open-Meteo 模型 ID（旧缓存可能缺失，按 best_match 处理）。 */
+  model?: string;
 }
 
 export type FetchLike = (

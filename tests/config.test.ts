@@ -5,12 +5,12 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
-  clearLocationConfig,
+  clearLocationFromConfig,
   isCacheUsable,
-  isLocationConfig,
-  readLocationConfig,
+  isWeatherWidgetConfig,
+  readWeatherConfig,
   resolveConfigPath,
-  writeLocationConfig,
+  writeWeatherConfig,
 } from "../config.ts";
 import type { LocationInfo } from "../types.ts";
 import { makeSnapshot } from "./fixtures.ts";
@@ -48,43 +48,59 @@ test("resolveConfigPath honors PI_CODING_AGENT_DIR and the default home", () => 
   );
 });
 
-test("writeLocationConfig then readLocationConfig round-trips", async () => {
+test("writeWeatherConfig then readWeatherConfig round-trips location and model", async () => {
   await withTempDirectory(async (directory) => {
     const configPath = join(directory, "weather-widget.json");
-    await writeLocationConfig(configPath, manualLocation);
+    await writeWeatherConfig(configPath, { location: manualLocation, model: "cma_grapes_global" });
 
-    const config = await readLocationConfig(configPath);
-    assert.deepEqual(config, { location: manualLocation });
+    const config = await readWeatherConfig(configPath);
+    assert.deepEqual(config, { location: manualLocation, model: "cma_grapes_global" });
 
     const raw = JSON.parse(await readFile(configPath, "utf8"));
-    assert.ok(isLocationConfig(raw));
+    assert.ok(isWeatherWidgetConfig(raw));
   });
 });
 
-test("readLocationConfig returns undefined for missing, invalid, or malformed files", async () => {
+test("writeWeatherConfig omits empty sections and accepts model-only configs", async () => {
   await withTempDirectory(async (directory) => {
     const configPath = join(directory, "weather-widget.json");
-    assert.equal(await readLocationConfig(configPath), undefined);
+    await writeWeatherConfig(configPath, { model: "ecmwf_ifs025" });
+
+    const raw = JSON.parse(await readFile(configPath, "utf8"));
+    assert.deepEqual(raw, { model: "ecmwf_ifs025" });
+    assert.deepEqual(await readWeatherConfig(configPath), { model: "ecmwf_ifs025" });
+  });
+});
+
+test("readWeatherConfig returns undefined for missing, invalid, or malformed files", async () => {
+  await withTempDirectory(async (directory) => {
+    const configPath = join(directory, "weather-widget.json");
+    assert.equal(await readWeatherConfig(configPath), undefined);
 
     await writeFile(configPath, "{ not json", "utf8");
-    assert.equal(await readLocationConfig(configPath), undefined);
+    assert.equal(await readWeatherConfig(configPath), undefined);
 
     await writeFile(configPath, JSON.stringify({ location: { latitude: 999 } }), "utf8");
-    assert.equal(await readLocationConfig(configPath), undefined);
+    assert.equal(await readWeatherConfig(configPath), undefined);
 
+    await writeFile(configPath, JSON.stringify({ model: "not_a_real_model" }), "utf8");
+    assert.equal(await readWeatherConfig(configPath), undefined);
+
+    // 空对象是合法的“无配置”，行为等同配置文件缺失
     await writeFile(configPath, JSON.stringify({}), "utf8");
-    assert.equal(await readLocationConfig(configPath), undefined);
+    assert.deepEqual(await readWeatherConfig(configPath), {});
   });
 });
 
-test("clearLocationConfig removes the file and tolerates a missing file", async () => {
+test("clearLocationFromConfig keeps the model and tolerates a missing file", async () => {
   await withTempDirectory(async (directory) => {
     const configPath = join(directory, "weather-widget.json");
-    await writeLocationConfig(configPath, manualLocation);
-    await clearLocationConfig(configPath);
-    assert.equal(await readLocationConfig(configPath), undefined);
+    await writeWeatherConfig(configPath, { location: manualLocation, model: "cma_grapes_global" });
+    await clearLocationFromConfig(configPath);
+    assert.deepEqual(await readWeatherConfig(configPath), { model: "cma_grapes_global" });
 
-    await clearLocationConfig(configPath);
+    await clearLocationFromConfig(configPath);
+    await clearLocationFromConfig(join(directory, "absent.json"));
   });
 });
 
@@ -97,18 +113,29 @@ test("isCacheUsable matches manual snapshots only against the same fixed coordin
   const samePlace = { ...manualLocation, latitude: 31.2311, longitude: 121.4735 };
   const otherPlace = { ...manualLocation, latitude: 39.9042, longitude: 116.4074 };
 
-  assert.equal(isCacheUsable(manualSnapshot, samePlace), true);
-  assert.equal(isCacheUsable(manualSnapshot, otherPlace), false);
-  assert.equal(isCacheUsable(manualSnapshot, undefined), false);
+  assert.equal(isCacheUsable(manualSnapshot, samePlace, undefined), true);
+  assert.equal(isCacheUsable(manualSnapshot, otherPlace, undefined), false);
+  assert.equal(isCacheUsable(manualSnapshot, undefined, undefined), false);
 });
 
 test("isCacheUsable accepts IP snapshots only in automatic mode", () => {
   const ipSnapshot = makeSnapshot();
   ipSnapshot.location.source = "ip";
 
-  assert.equal(isCacheUsable(ipSnapshot, undefined), true);
-  assert.equal(isCacheUsable(ipSnapshot, manualLocation), false);
+  assert.equal(isCacheUsable(ipSnapshot, undefined, undefined), true);
+  assert.equal(isCacheUsable(ipSnapshot, manualLocation, undefined), false);
 
   const legacySnapshot = makeSnapshot();
-  assert.equal(isCacheUsable(legacySnapshot, undefined), true);
+  assert.equal(isCacheUsable(legacySnapshot, undefined, undefined), true);
+});
+
+test("isCacheUsable rejects snapshots produced by a different model", () => {
+  const snapshot = makeSnapshot();
+  snapshot.model = "cma_grapes_global";
+
+  assert.equal(isCacheUsable(snapshot, undefined, "cma_grapes_global"), true);
+  assert.equal(isCacheUsable(snapshot, undefined, undefined), false);
+
+  const legacySnapshot = makeSnapshot();
+  assert.equal(isCacheUsable(legacySnapshot, undefined, "cma_grapes_global"), false);
 });

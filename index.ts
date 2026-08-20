@@ -11,12 +11,19 @@ import {
   resolveLocationByQuery,
 } from "./api.ts";
 import {
-  clearLocationConfig,
+  clearLocationFromConfig,
   isCacheUsable,
-  readLocationConfig,
+  readWeatherConfig,
   resolveConfigPath,
-  writeLocationConfig,
+  writeWeatherConfig,
 } from "./config.ts";
+import {
+  DEFAULT_MODEL_ID,
+  WEATHER_MODELS,
+  describeWeatherModel,
+  findWeatherModel,
+  formatModelList,
+} from "./models.ts";
 import {
   readFreshCache,
   removeCache,
@@ -34,8 +41,9 @@ const USAGE = [
   "  /weather set <城市名>   固定位置（例：/weather set 上海）",
   "  /weather set <纬度,经度> 固定位置（例：/weather set 31.23,121.47）",
   "  /weather set <IP>      按该 IP 解析并固定（例：/weather set 114.114.114.114）",
-  "  /weather auto          清除配置，恢复 IP 自动定位",
-  "  /weather               查看当前定位模式",
+  "  /weather auto          清除固定位置，恢复 IP 自动定位",
+  "  /weather model [名称]   查看/设置气象数据模型（例：/weather model cma_grapes_global）",
+  "  /weather               查看当前状态",
 ].join("\n");
 
 const scheduler: Scheduler = {
@@ -72,14 +80,18 @@ export default function weatherWidgetExtension(pi: ExtensionAPI): void {
     runtime = new WeatherRuntime({
       scheduler,
       readCache: async (nowMs) => {
-        const fixed = await readLocationConfig(configPath).catch(() => undefined);
+        const config = await readWeatherConfig(configPath).catch(() => undefined);
         const cached = await readFreshCache(cachePath, nowMs);
-        if (!cached || !isCacheUsable(cached, fixed?.location)) return undefined;
+        if (!cached || !isCacheUsable(cached, config?.location, config?.model)) return undefined;
         return cached;
       },
       fetchSnapshot: async (signal) => {
-        const fixed = await readLocationConfig(configPath).catch(() => undefined);
-        return fetchWeatherSnapshot({ signal, fixedLocation: fixed?.location });
+        const config = await readWeatherConfig(configPath).catch(() => undefined);
+        return fetchWeatherSnapshot({
+          signal,
+          fixedLocation: config?.location,
+          model: config?.model,
+        });
       },
       writeCache: (snapshot) => writeCacheAtomic(cachePath, snapshot),
       removeCache: () => removeCache(cachePath),
@@ -110,12 +122,24 @@ export default function weatherWidgetExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("weather", {
-    description: "配置天气组件定位：set 城市/坐标、auto 恢复 IP 定位、无参数查看状态",
+    description:
+      "配置天气组件：set 固定位置、auto 恢复 IP 定位、model 切换气象模型、无参数查看状态",
     getArgumentCompletions: (prefix: string) => {
       const items = [
         { value: "set ", label: "set", description: "固定位置（城市名、IP 或 纬度,经度）" },
-        { value: "auto", label: "auto", description: "清除配置，恢复 IP 自动定位" },
+        { value: "auto", label: "auto", description: "清除固定位置，恢复 IP 自动定位" },
       ];
+      if (prefix === "model" || prefix.startsWith("model ")) {
+        items.push(
+          ...WEATHER_MODELS.map((model) => ({
+            value: `model ${model.id}`,
+            label: model.id,
+            description: model.description,
+          })),
+        );
+      } else {
+        items.push({ value: "model ", label: "model", description: "查看/设置气象数据模型" });
+      }
       const filtered = items.filter((item) => item.value.startsWith(prefix));
       return filtered.length > 0 ? filtered : null;
     },
@@ -125,14 +149,18 @@ export default function weatherWidgetExtension(pi: ExtensionAPI): void {
       const trimmed = args.trim();
 
       if (trimmed.length === 0) {
-        const fixed = await readLocationConfig(configPath).catch(() => undefined);
-        if (fixed) {
-          ctx.ui.notify(`定位模式：固定 ${formatLocationSummary(fixed.location)}`, "info");
+        const config = await readWeatherConfig(configPath).catch(() => undefined);
+        if (config?.location) {
+          ctx.ui.notify(`定位模式：固定 ${formatLocationSummary(config.location)}`, "info");
         } else {
           const current = runtime?.currentSnapshot;
           const suffix = current ? `（当前：${current.location.displayName}）` : "";
           ctx.ui.notify(`定位模式：IP 自动定位${suffix}`, "info");
         }
+        ctx.ui.notify(
+          `气象模型：${config?.model ?? DEFAULT_MODEL_ID}（${describeWeatherModel(config?.model)}）`,
+          "info",
+        );
         if (!runtime) {
           ctx.ui.notify("天气组件当前未运行（非 TUI 模式），配置将在下次会话生效", "warning");
         }
@@ -141,7 +169,7 @@ export default function weatherWidgetExtension(pi: ExtensionAPI): void {
 
       if (trimmed === "auto" || trimmed === "ip") {
         try {
-          await clearLocationConfig(configPath);
+          await clearLocationFromConfig(configPath);
         } catch {
           ctx.ui.notify("清除配置文件失败，请检查 ~/.pi/agent 目录权限", "error");
           return;
@@ -149,6 +177,48 @@ export default function weatherWidgetExtension(pi: ExtensionAPI): void {
         await removeCache(cachePath).catch(() => undefined);
         await runtime?.forceRefresh();
         ctx.ui.notify("已恢复 IP 自动定位", "info");
+        return;
+      }
+
+      if (trimmed === "model" || trimmed.startsWith("model ")) {
+        const modelArg = trimmed === "model" ? "" : trimmed.slice("model".length).trim();
+        if (modelArg.length === 0) {
+          const config = await readWeatherConfig(configPath).catch(() => undefined);
+          const current = config?.model ?? DEFAULT_MODEL_ID;
+          ctx.ui.notify(
+            `当前气象模型：${current}（${describeWeatherModel(current)}）\n可用模型：\n${formatModelList()}`,
+            "info",
+          );
+          return;
+        }
+
+        const requested = modelArg === "auto" || modelArg === "default" ? DEFAULT_MODEL_ID : modelArg;
+        if (!findWeatherModel(requested)) {
+          ctx.ui.notify(
+            `未知模型“${modelArg}”。可用模型：\n${formatModelList()}`,
+            "warning",
+          );
+          return;
+        }
+
+        try {
+          const existing = await readWeatherConfig(configPath).catch(() => undefined);
+          await writeWeatherConfig(configPath, {
+            location: existing?.location,
+            ...(requested === DEFAULT_MODEL_ID ? {} : { model: requested }),
+          });
+        } catch {
+          ctx.ui.notify("写入配置文件失败，请检查 ~/.pi/agent 目录权限", "error");
+          return;
+        }
+        await removeCache(cachePath).catch(() => undefined);
+        await runtime?.forceRefresh();
+        ctx.ui.notify(
+          requested === DEFAULT_MODEL_ID
+            ? `已恢复默认气象模型 ${DEFAULT_MODEL_ID}`
+            : `已切换气象模型：${requested}（${describeWeatherModel(requested)}）`,
+          "info",
+        );
         return;
       }
 
@@ -185,7 +255,11 @@ export default function weatherWidgetExtension(pi: ExtensionAPI): void {
       }
 
       try {
-        await writeLocationConfig(configPath, location);
+        const existing = await readWeatherConfig(configPath).catch(() => undefined);
+        await writeWeatherConfig(configPath, {
+          location,
+          ...(existing?.model !== undefined ? { model: existing.model } : {}),
+        });
       } catch {
         ctx.ui.notify("写入配置文件失败，请检查 ~/.pi/agent 目录权限", "error");
         return;

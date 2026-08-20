@@ -134,6 +134,7 @@ test("readFreshCache rejects and removes invalid nested snapshot values", async 
     { ...snapshot, weather: { ...snapshot.weather, relativeHumidityPercent: 101 } },
     { ...snapshot, weather: { ...snapshot.weather, weatherCode: 0.5 } },
     { ...snapshot, weather: { ...snapshot.weather, windSpeedKmh: -1 } },
+    { ...snapshot, model: "not_a_real_model" },
   ];
 
   for (const invalidSnapshot of invalidSnapshots) {
@@ -156,6 +157,24 @@ test("writeCacheAtomic leaves one complete JSON file and no temporary files", as
     await writeCacheAtomic(cachePath, snapshot);
     assert.deepEqual(JSON.parse(await readFile(cachePath, "utf8")), snapshot);
     assert.deepEqual(await readdir(join(directory, "cache")), ["weather-widget.json"]);
+  });
+});
+
+test("snapshots may carry a supported model id, but nothing else", async () => {
+  await withTempDirectory(async (directory) => {
+    const cachePath = join(directory, "weather-widget.json");
+    const nowMs = Date.parse("2026-08-19T07:00:00.000Z");
+
+    const snapshot = makeSnapshot();
+    snapshot.model = "cma_grapes_global";
+    await writeCacheAtomic(cachePath, snapshot);
+    assert.deepEqual(await readFreshCache(cachePath, nowMs), snapshot);
+
+    const invalid = makeSnapshot();
+    invalid.model = "bogus_model";
+    await writeCacheAtomic(cachePath, invalid);
+    assert.equal(await readFreshCache(cachePath, nowMs), undefined);
+    await assert.rejects(readFile(cachePath, "utf8"), { code: "ENOENT" });
   });
 });
 

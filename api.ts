@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 
+import { DEFAULT_MODEL_ID } from "./models.ts";
 import {
   normalizeTerminalSafeText,
   type CurrentWeather,
@@ -214,7 +215,11 @@ export function parseCurrentWeather(payload: unknown): CurrentWeather {
   };
 }
 
-export function buildWeatherUrl(latitude: number, longitude: number): string {
+export function buildWeatherUrl(
+  latitude: number,
+  longitude: number,
+  model: string = DEFAULT_MODEL_ID,
+): string {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(latitude));
   url.searchParams.set("longitude", String(longitude));
@@ -222,6 +227,7 @@ export function buildWeatherUrl(latitude: number, longitude: number): string {
   url.searchParams.set("temperature_unit", "celsius");
   url.searchParams.set("wind_speed_unit", "kmh");
   url.searchParams.set("timezone", "auto");
+  url.searchParams.set("models", model);
   return url.toString();
 }
 
@@ -231,6 +237,7 @@ export interface FetchWeatherSnapshotOptions {
   timeoutMs?: number;
   now?: () => Date;
   fixedLocation?: LocationInfo;
+  model?: string;
 }
 
 export interface ResolveLocationOptions {
@@ -280,14 +287,15 @@ export async function fetchWeatherSnapshot(
     parseLocation(
       await requestJson(IPWHOIS_URL, fetchImpl, options.signal, timeoutMs),
     );
+  const model = options.model ?? DEFAULT_MODEL_ID;
   const weather = parseCurrentWeather(
     await requestJson(
-      buildWeatherUrl(location.latitude, location.longitude),
+      buildWeatherUrl(location.latitude, location.longitude, model),
       fetchImpl,
       options.signal,
       timeoutMs,
     ),
   );
 
-  return { location, weather, fetchedAt: now().toISOString() };
+  return { location, weather, model, fetchedAt: now().toISOString() };
 }

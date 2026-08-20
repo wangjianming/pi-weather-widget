@@ -45,7 +45,7 @@ const weatherPayload = {
   },
 };
 
-test("buildWeatherUrl requests the exact current fields and units", () => {
+test("buildWeatherUrl requests the exact current fields, units, and model", () => {
   const url = new URL(buildWeatherUrl(34.3416, 108.9398));
   assert.equal(url.origin + url.pathname, "https://api.open-meteo.com/v1/forecast");
   assert.equal(url.searchParams.get("latitude"), "34.3416");
@@ -57,6 +57,10 @@ test("buildWeatherUrl requests the exact current fields and units", () => {
   assert.equal(url.searchParams.get("temperature_unit"), "celsius");
   assert.equal(url.searchParams.get("wind_speed_unit"), "kmh");
   assert.equal(url.searchParams.get("timezone"), "auto");
+  assert.equal(url.searchParams.get("models"), "best_match");
+
+  const withModel = new URL(buildWeatherUrl(34.3416, 108.9398, "cma_grapes_global"));
+  assert.equal(withModel.searchParams.get("models"), "cma_grapes_global");
 });
 
 test("parseLocation selects the first non-empty city, region, or country", () => {
@@ -138,6 +142,7 @@ test("fetchWeatherSnapshot performs geolocation before weather", async () => {
   assert.equal(snapshot.location.displayName, "西安");
   assert.equal(snapshot.location.source, "ip");
   assert.equal(snapshot.weather.temperatureC, 22.4);
+  assert.equal(snapshot.model, "best_match");
   assert.equal(snapshot.fetchedAt, "2026-08-19T06:05:00.000Z");
 });
 
@@ -164,6 +169,30 @@ test("fetchWeatherSnapshot with a fixed location skips IPWhois entirely", async 
   assert.equal(new URL(calls[0]!).searchParams.get("latitude"), "31.2304");
   assert.equal(snapshot.location.displayName, "上海");
   assert.equal(snapshot.location.source, "manual");
+});
+
+test("fetchWeatherSnapshot requests and stamps the configured model", async () => {
+  const calls: string[] = [];
+  const fakeFetch: FetchLike = async (input) => {
+    calls.push(String(input));
+    return jsonResponse(weatherPayload);
+  };
+
+  const snapshot = await fetchWeatherSnapshot({
+    fetchImpl: fakeFetch,
+    fixedLocation: {
+      latitude: 34.261,
+      longitude: 108.9423,
+      displayName: "西安",
+      source: "manual",
+    },
+    model: "cma_grapes_global",
+    now: () => new Date("2026-08-20T07:00:00.000Z"),
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0]!).searchParams.get("models"), "cma_grapes_global");
+  assert.equal(snapshot.model, "cma_grapes_global");
 });
 
 test("buildGeocodingUrl requests a single Chinese-language result", () => {

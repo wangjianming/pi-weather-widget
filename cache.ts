@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { normalizeTerminalSafeText, type WeatherSnapshot } from "./types.ts";
+import { isSupportedModelId } from "./models.ts";
 
 export const CACHE_MAX_AGE_MS = 3 * 60 * 60 * 1_000;
 export const FUTURE_CLOCK_SKEW_MS = 5 * 60 * 1_000;
@@ -37,6 +38,7 @@ export function isWeatherSnapshot(value: unknown): value is WeatherSnapshot {
 
   return (
     parseIsoTimestamp(value.fetchedAt) !== undefined &&
+    (value.model === undefined || isSupportedModelId(value.model)) &&
     isOptionalText(location.city) &&
     isOptionalText(location.region) &&
     isOptionalText(location.country) &&

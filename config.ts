@@ -4,9 +4,11 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { normalizeTerminalSafeText, type LocationInfo, type WeatherSnapshot } from "./types.ts";
+import { DEFAULT_MODEL_ID, isSupportedModelId } from "./models.ts";
 
-export interface LocationConfig {
-  location: LocationInfo;
+export interface WeatherWidgetConfig {
+  location?: LocationInfo;
+  model?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -35,8 +37,11 @@ function isFixedLocation(value: unknown): value is LocationInfo {
   );
 }
 
-export function isLocationConfig(value: unknown): value is LocationConfig {
-  return isRecord(value) && isFixedLocation(value.location);
+export function isWeatherWidgetConfig(value: unknown): value is WeatherWidgetConfig {
+  if (!isRecord(value)) return false;
+  if (value.location !== undefined && !isFixedLocation(value.location)) return false;
+  if (value.model !== undefined && !isSupportedModelId(value.model)) return false;
+  return true;
 }
 
 export function resolveConfigPath(
@@ -47,9 +52,9 @@ export function resolveConfigPath(
   return join(configRoot, "weather-widget.json");
 }
 
-export async function readLocationConfig(
+export async function readWeatherConfig(
   configPath: string,
-): Promise<LocationConfig | undefined> {
+): Promise<WeatherWidgetConfig | undefined> {
   let raw: string;
   try {
     raw = await readFile(configPath, "utf8");
@@ -64,12 +69,12 @@ export async function readLocationConfig(
     return undefined;
   }
 
-  return isLocationConfig(parsed) ? parsed : undefined;
+  return isWeatherWidgetConfig(parsed) ? parsed : undefined;
 }
 
-export async function writeLocationConfig(
+export async function writeWeatherConfig(
   configPath: string,
-  location: LocationInfo,
+  config: WeatherWidgetConfig,
 ): Promise<void> {
   const directory = dirname(configPath);
   await mkdir(directory, { recursive: true });
@@ -78,9 +83,12 @@ export async function writeLocationConfig(
     `.${basename(configPath)}.${process.pid}.${randomUUID()}.tmp`,
   );
 
-  const config: LocationConfig = { location };
+  const normalized: WeatherWidgetConfig = {};
+  if (config.location !== undefined) normalized.location = config.location;
+  if (config.model !== undefined) normalized.model = config.model;
+
   try {
-    await writeFile(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, {
+    await writeFile(temporaryPath, `${JSON.stringify(normalized, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });
@@ -90,8 +98,14 @@ export async function writeLocationConfig(
   }
 }
 
-export async function clearLocationConfig(configPath: string): Promise<void> {
-  await rm(configPath, { force: true });
+/** 清除固定位置，但保留气象模型配置。 */
+export async function clearLocationFromConfig(configPath: string): Promise<void> {
+  const existing = await readWeatherConfig(configPath);
+  if (existing?.model !== undefined) {
+    await writeWeatherConfig(configPath, { model: existing.model });
+  } else {
+    await rm(configPath, { force: true });
+  }
 }
 
 function rounded(value: number): number {
@@ -101,7 +115,11 @@ function rounded(value: number): number {
 export function isCacheUsable(
   snapshot: WeatherSnapshot,
   fixedLocation: LocationInfo | undefined,
+  model: string | undefined,
 ): boolean {
+  const snapshotModel = snapshot.model ?? DEFAULT_MODEL_ID;
+  if (snapshotModel !== (model ?? DEFAULT_MODEL_ID)) return false;
+
   const source = snapshot.location.source;
   if (fixedLocation) {
     return (

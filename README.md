@@ -57,13 +57,42 @@ When your public IP points at a VPN exit, automatic geolocation shows the wrong 
 - While pinned, IPWhois is never contacted; only Open-Meteo is queried.
 - Switching between pinned/automatic modes or changing the pin immediately invalidates the on-disk cache and refetches.
 
+## Choosing a weather model
+
+Open-Meteo's default `best_match` blend can pick a model that misrepresents your local weather (e.g. reporting drizzle on a sunny afternoon — observed with MET Nordic over Xi'an). `/weather model` lets you pin the underlying numerical model instead:
+
+```
+/weather model                # show the current model and list all available models
+/weather model cma_grapes_global  # switch (e.g. China Meteorological Administration GRAPES)
+/weather model best_match     # or: /weather model auto — restore the default blend
+```
+
+- The choice is stored alongside the pin in the same config file and applies to both pinned and IP-geolocated mode.
+- Model ids are validated against a curated allowlist of global models that actually output WMO weather codes (AI models like `ecmwf_aifs025`/`gfs_graphcast025` are excluded because they don't).
+- Changing the model invalidates the cache and refetches immediately.
+
+### Available models
+
+| Model | Notes |
+| --- | --- |
+| `best_match` | Open-Meteo default (auto-selects per region) |
+| `cma_grapes_global` | China Meteorological Administration GRAPES — recommended in China |
+| `ecmwf_ifs025` | ECMWF IFS 0.25° |
+| `gfs_seamless` | US NCEP GFS |
+| `icon_seamless` | German ICON |
+| `meteofrance_seamless` | Météo-France ARPEGE/AROME |
+| `jma_seamless` | Japan Meteorological Agency GSM/MSM |
+| `metno_seamless` | Norwegian MET Nordic |
+| `ukmo_seamless` | UK Met Office UM |
+
 ## How it works
 
 | File | Responsibility |
 | --- | --- |
 | `index.ts` | Extension entry; wires lifecycle, renders the widget, and registers the `/weather` command |
 | `api.ts` | IPWhois + Open-Meteo + geocoding clients with strict response validation and per-request timeouts (10 s) |
-| `config.ts` | Atomic persistence of the pinned location and cache/mode matching |
+| `config.ts` | Atomic persistence of the pinned location/model and cache/mode matching |
+| `models.ts` | Curated allowlist of Open-Meteo weather models |
 | `runtime.ts` | Refresh/expiry scheduling, abort handling, stale-or-hide fallback, forced refresh |
 | `cache.ts` | Atomic (temp-file + rename) JSON cache with a strict 3-hour max age |
 | `formatter.ts` | Responsive colored single-line rendering |

@@ -57,13 +57,42 @@ git clone https://github.com/wangjianming/pi-weather-widget.git ~/.pi/agent/exte
 - 固定后不再访问 IPWhois，只查询 Open-Meteo。
 - 固定/自动模式切换或修改固定位置时，磁盘缓存立即失效并重新拉取。
 
+## 切换气象模型
+
+Open-Meteo 默认的 `best_match` 组合可能挑到不契合当地实况的模型（例如晴天午后报“大毛毛雨”——西安实测 MET Nordic 就出过这种幽灵毛毛雨）。用 `/weather model` 可以钉住底层数值模型：
+
+```
+/weather model                # 查看当前模型并列出全部可选模型
+/weather model cma_grapes_global  # 切换（中国气象局 GRAPES，国内推荐）
+/weather model best_match     # 或：/weather model auto —— 恢复默认组合
+```
+
+- 模型与固定位置存在同一配置文件中，固定定位与 IP 自动定位两种模式下均生效。
+- 模型 ID 经过白名单校验，只收录真正输出 WMO 天气代码的全球模型（`ecmwf_aifs025`/`gfs_graphcast025` 等 AI 模型不输出天气代码，故不收录）。
+- 切换模型后缓存立即失效并重新拉取。
+
+### 可选模型
+
+| 模型 | 说明 |
+| --- | --- |
+| `best_match` | Open-Meteo 默认（按区域自动选模型） |
+| `cma_grapes_global` | 中国气象局 GRAPES —— 国内推荐 |
+| `ecmwf_ifs025` | 欧洲中期天气预报中心 IFS 0.25° |
+| `gfs_seamless` | 美国 NCEP GFS |
+| `icon_seamless` | 德国 ICON |
+| `meteofrance_seamless` | 法国 ARPEGE/AROME |
+| `jma_seamless` | 日本气象厅 GSM/MSM |
+| `metno_seamless` | 挪威 MET 北欧模型 |
+| `ukmo_seamless` | 英国气象局 UM |
+
 ## 工作原理
 
 | 文件 | 职责 |
 | --- | --- |
 | `index.ts` | 扩展入口；生命周期接线、组件渲染，并注册 `/weather` 命令 |
 | `api.ts` | IPWhois + Open-Meteo + 地理编码客户端，严格校验响应，单请求 10 秒超时 |
-| `config.ts` | 固定位置的原子化持久化，及缓存/模式匹配 |
+| `config.ts` | 固定位置与模型的原子化持久化，及缓存/模式匹配 |
+| `models.ts` | Open-Meteo 气象模型白名单 |
 | `runtime.ts` | 刷新/过期调度、中止处理、过期兜底显示逻辑、强制刷新 |
 | `cache.ts` | 原子化（临时文件 + rename）JSON 缓存，严格 3 小时有效期 |
 | `formatter.ts` | 自适应宽度的单行彩色渲染 |
