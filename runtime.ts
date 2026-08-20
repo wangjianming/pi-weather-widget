@@ -29,7 +29,7 @@ export class WeatherRuntime {
   private readonly dependencies: WeatherRuntimeDependencies;
   private started = false;
   private disposed = false;
-  private refreshing = false;
+  private refreshingToken: unknown;
   private activeController: AbortController | undefined;
   private refreshHandle: unknown;
   private expiryHandle: unknown;
@@ -39,6 +39,10 @@ export class WeatherRuntime {
     this.dependencies = dependencies;
     this.refreshIntervalMs = dependencies.refreshIntervalMs ?? REFRESH_INTERVAL_MS;
     this.maxAgeMs = dependencies.maxAgeMs ?? CACHE_MAX_AGE_MS;
+  }
+
+  get currentSnapshot(): WeatherSnapshot | undefined {
+    return this.snapshot;
   }
 
   start(): void {
@@ -51,9 +55,17 @@ export class WeatherRuntime {
     void this.initialize();
   }
 
+  async forceRefresh(): Promise<void> {
+    if (this.disposed) return;
+    this.activeController?.abort(new Error("weather widget forced refresh"));
+    this.refreshingToken = undefined;
+    await this.refresh();
+  }
+
   async refresh(): Promise<void> {
-    if (this.disposed || this.refreshing) return;
-    this.refreshing = true;
+    if (this.disposed || this.refreshingToken !== undefined) return;
+    const token = Symbol("refresh");
+    this.refreshingToken = token;
     const controller = new AbortController();
     this.activeController = controller;
 
@@ -69,7 +81,7 @@ export class WeatherRuntime {
       this.showStaleOrHide();
     } finally {
       if (this.activeController === controller) this.activeController = undefined;
-      this.refreshing = false;
+      if (this.refreshingToken === token) this.refreshingToken = undefined;
     }
   }
 

@@ -4,7 +4,7 @@
 
 一个零配置的 [pi](https://github.com/earendil-works/pi-coding-agent) 全局扩展，在输入框上方用一行彩色文字显示当前天气。
 
-它通过公网 IP 定位大致位置（使用 [IPWhois](https://ipwho.is/)），再从 [Open-Meteo](https://open-meteo.com/) 获取当前天气。**无需任何 API key。**
+它通过公网 IP 定位大致位置（使用 [IPWhois](https://ipwho.is/)），再从 [Open-Meteo](https://open-meteo.com/) 获取当前天气。**无需任何 API key。** 若 IP 定位不准（VPN/代理场景），可用 `/weather` 命令固定位置。
 
 ```
 ☀ 東京都 27°C 体感 31°C 大部晴朗 · 湿度 77% · 风速 5 km/h
@@ -13,6 +13,7 @@
 ## 功能特性
 
 - **零配置** —— 无需 API key、无需设置，装好重载即可使用。
+- **免疫 VPN 的 `/weather` 命令** —— 可固定城市或坐标，也可随时恢复 IP 自动定位。
 - **不阻塞** —— 缓存与网络请求全部在后台进行，绝不拖慢 pi 启动和对话。
 - **自动刷新** —— 每 30 分钟完整刷新一次「IP → 位置 → 天气」链路。
 - **本地缓存** —— 结果写入磁盘缓存，3 小时以内直接复用。
@@ -40,13 +41,29 @@ git clone https://github.com/wangjianming/pi-weather-widget.git ~/.pi/agent/exte
 
 卸载时删除该目录并再次 `/reload` 即可。
 
+## 固定位置（VPN / 代理场景）
+
+公网 IP 指向 VPN 出口时，自动定位会显示错误的城市。用 `/weather` 斜杠命令修复（立即生效，无需重启）：
+
+```
+/weather set 上海        # 固定城市（经 Open-Meteo 免费地理编码 API 解析）
+/weather set 31.23,121.47  # 或直接固定坐标
+/weather auto           # 清除固定，恢复 IP 自动定位
+/weather                 # 查看当前模式与固定位置
+```
+
+- 固定位置保存在 `${PI_CODING_AGENT_DIR:-~/.pi/agent}/weather-widget.json`（个人配置目录，不在本仓库内）。
+- 固定后不再访问 IPWhois，只查询 Open-Meteo。
+- 固定/自动模式切换或修改固定位置时，磁盘缓存立即失效并重新拉取。
+
 ## 工作原理
 
 | 文件 | 职责 |
 | --- | --- |
-| `index.ts` | 扩展入口；把生命周期接到 `session_start` / `session_shutdown`，并渲染组件 |
-| `api.ts` | IPWhois + Open-Meteo 客户端，严格校验响应，单请求 10 秒超时 |
-| `runtime.ts` | 刷新/过期调度、中止处理、过期兜底显示逻辑 |
+| `index.ts` | 扩展入口；生命周期接线、组件渲染，并注册 `/weather` 命令 |
+| `api.ts` | IPWhois + Open-Meteo + 地理编码客户端，严格校验响应，单请求 10 秒超时 |
+| `config.ts` | 固定位置的原子化持久化，及缓存/模式匹配 |
+| `runtime.ts` | 刷新/过期调度、中止处理、过期兜底显示逻辑、强制刷新 |
 | `cache.ts` | 原子化（临时文件 + rename）JSON 缓存，严格 3 小时有效期 |
 | `formatter.ts` | 自适应宽度的单行彩色渲染 |
 | `weather-codes.ts` | WMO 天气代码 → 图标 / 描述 / 类型 的映射 |

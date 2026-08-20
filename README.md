@@ -4,7 +4,7 @@
 
 A zero-config global extension for [pi](https://github.com/earendil-works/pi-coding-agent) that shows the current weather as a single colored line above the input editor.
 
-It resolves your approximate location from your public IP (via [IPWhois](https://ipwho.is/)) and fetches current conditions from [Open-Meteo](https://open-meteo.com/). **No API key required.**
+It resolves your approximate location from your public IP (via [IPWhois](https://ipwho.is/)) and fetches current conditions from [Open-Meteo](https://open-meteo.com/). **No API key required.** If the IP-based location is wrong (VPN, proxy), pin a fixed location with the `/weather` command.
 
 ```
 ☀ 東京都 27°C 体感 31°C 大部晴朗 · 湿度 77% · 风速 5 km/h
@@ -13,6 +13,7 @@ It resolves your approximate location from your public IP (via [IPWhois](https:/
 ## Features
 
 - **Zero config** — no API keys, no settings; install and reload.
+- **VPN-proof `/weather` command** — pin a city or coordinates, or fall back to automatic IP geolocation.
 - **Non-blocking** — all cache and network work runs in the background; Pi startup and conversations are never delayed.
 - **Self-updating** — refreshes the full IP → location → weather chain every 30 minutes.
 - **Cached** — results are cached on disk and reused while less than 3 hours old.
@@ -40,13 +41,29 @@ Then restart pi, or run `/reload` inside a session.
 
 To remove, delete the directory and `/reload` again.
 
+## Pinning a location (VPN / proxy)
+
+When your public IP points at a VPN exit, automatic geolocation shows the wrong city. Fix it with the `/weather` slash command (takes effect immediately, no restart):
+
+```
+/weather set 上海        # pin a city (resolved via Open-Meteo's free geocoding API)
+/weather set 31.23,121.47  # ...or pin raw coordinates
+/weather auto           # clear the pin and restore IP-based geolocation
+/weather                 # show the current mode and fixed position
+```
+
+- The pin is stored in `${PI_CODING_AGENT_DIR:-~/.pi/agent}/weather-widget.json` (personal config directory, outside this repo).
+- While pinned, IPWhois is never contacted; only Open-Meteo is queried.
+- Switching between pinned/automatic modes or changing the pin immediately invalidates the on-disk cache and refetches.
+
 ## How it works
 
 | File | Responsibility |
 | --- | --- |
-| `index.ts` | Extension entry; wires lifecycle to `session_start` / `session_shutdown` and renders the widget |
-| `api.ts` | IPWhois + Open-Meteo client with strict response validation and per-request timeouts (10 s) |
-| `runtime.ts` | Refresh/expiry scheduling, abort handling, stale-or-hide fallback |
+| `index.ts` | Extension entry; wires lifecycle, renders the widget, and registers the `/weather` command |
+| `api.ts` | IPWhois + Open-Meteo + geocoding clients with strict response validation and per-request timeouts (10 s) |
+| `config.ts` | Atomic persistence of the pinned location and cache/mode matching |
+| `runtime.ts` | Refresh/expiry scheduling, abort handling, stale-or-hide fallback, forced refresh |
 | `cache.ts` | Atomic (temp-file + rename) JSON cache with a strict 3-hour max age |
 | `formatter.ts` | Responsive colored single-line rendering |
 | `weather-codes.ts` | WMO weather code → symbol / description / family mapping |

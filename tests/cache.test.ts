@@ -158,3 +158,26 @@ test("writeCacheAtomic leaves one complete JSON file and no temporary files", as
     assert.deepEqual(await readdir(join(directory, "cache")), ["weather-widget.json"]);
   });
 });
+
+test("snapshots may carry a location source of ip or manual, but nothing else", async () => {
+  await withTempDirectory(async (directory) => {
+    const cachePath = join(directory, "weather-widget.json");
+    const nowMs = Date.parse("2026-08-19T07:00:00.000Z");
+
+    for (const source of ["ip", "manual"]) {
+      const snapshot = makeSnapshot();
+      snapshot.location.source = source;
+      await writeCacheAtomic(cachePath, snapshot);
+      assert.deepEqual(await readFreshCache(cachePath, nowMs), snapshot);
+    }
+
+    const snapshot = makeSnapshot();
+    await writeCacheAtomic(cachePath, snapshot);
+    assert.deepEqual(await readFreshCache(cachePath, nowMs), snapshot);
+
+    const invalid = makeSnapshot();
+    invalid.location.source = "gps" as never;
+    await writeCacheAtomic(cachePath, invalid);
+    assert.equal(await readFreshCache(cachePath, nowMs), undefined);
+  });
+});

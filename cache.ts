@@ -8,6 +8,10 @@ import { normalizeTerminalSafeText, type WeatherSnapshot } from "./types.ts";
 export const CACHE_MAX_AGE_MS = 3 * 60 * 60 * 1_000;
 export const FUTURE_CLOCK_SKEW_MS = 5 * 60 * 1_000;
 
+function isValidLocationSource(value: unknown): boolean {
+  return value === undefined || value === "ip" || value === "manual";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -45,6 +49,7 @@ export function isWeatherSnapshot(value: unknown): value is WeatherSnapshot {
     isFiniteNumber(location.longitude) &&
     location.longitude >= -180 &&
     location.longitude <= 180 &&
+    isValidLocationSource(location.source) &&
     isFiniteNumber(weather.temperatureC) &&
     isFiniteNumber(weather.apparentTemperatureC) &&
     isFiniteNumber(weather.relativeHumidityPercent) &&

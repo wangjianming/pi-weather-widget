@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildGeocodingUrl,
   buildWeatherUrl,
   fetchWeatherSnapshot,
+  formatCoordinateLabel,
+  parseCoordinateInput,
   parseCurrentWeather,
+  parseGeocodingResult,
   parseLocation,
+  resolveLocationByQuery,
 } from "../api.ts";
 import type { FetchLike } from "../types.ts";
 
@@ -128,8 +133,109 @@ test("fetchWeatherSnapshot performs geolocation before weather", async () => {
   assert.match(calls[0]!, /^https:\/\/ipwho\.is\//);
   assert.match(calls[1]!, /^https:\/\/api\.open-meteo\.com\/v1\/forecast/);
   assert.equal(snapshot.location.displayName, "西安");
+  assert.equal(snapshot.location.source, "ip");
   assert.equal(snapshot.weather.temperatureC, 22.4);
   assert.equal(snapshot.fetchedAt, "2026-08-19T06:05:00.000Z");
+});
+
+test("fetchWeatherSnapshot with a fixed location skips IPWhois entirely", async () => {
+  const calls: string[] = [];
+  const fakeFetch: FetchLike = async (input) => {
+    calls.push(String(input));
+    return jsonResponse(weatherPayload);
+  };
+
+  const snapshot = await fetchWeatherSnapshot({
+    fetchImpl: fakeFetch,
+    fixedLocation: {
+      latitude: 31.2304,
+      longitude: 121.4737,
+      displayName: "上海",
+      source: "manual",
+    },
+    now: () => new Date("2026-08-19T06:05:00.000Z"),
+  });
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!, /^https:\/\/api\.open-meteo\.com\/v1\/forecast/);
+  assert.equal(new URL(calls[0]!).searchParams.get("latitude"), "31.2304");
+  assert.equal(snapshot.location.displayName, "上海");
+  assert.equal(snapshot.location.source, "manual");
+});
+
+test("buildGeocodingUrl requests a single Chinese-language result", () => {
+  const url = new URL(buildGeocodingUrl("上海"));
+  assert.equal(url.origin + url.pathname, "https://geocoding-api.open-meteo.com/v1/search");
+  assert.equal(url.searchParams.get("name"), "上海");
+  assert.equal(url.searchParams.get("count"), "1");
+  assert.equal(url.searchParams.get("language"), "zh");
+  assert.equal(url.searchParams.get("format"), "json");
+});
+
+const geocodingPayload = {
+  results: [
+    {
+      name: "上海市",
+      admin1: "上海市",
+      country: "中国",
+      latitude: 31.2304,
+      longitude: 121.4737,
+      timezone: "Asia/Shanghai",
+    },
+  ],
+};
+
+test("parseGeocodingResult maps the first hit to a manual location", () => {
+  const location = parseGeocodingResult(geocodingPayload);
+  assert.equal(location.displayName, "上海市");
+  assert.equal(location.city, "上海市");
+  assert.equal(location.country, "中国");
+  assert.equal(location.timezone, "Asia/Shanghai");
+  assert.equal(location.source, "manual");
+});
+
+test("parseGeocodingResult rejects empty or malformed results", () => {
+  assert.throws(() => parseGeocodingResult({ results: [] }), /no matching location/);
+  assert.throws(() => parseGeocodingResult({}), /no matching location/);
+  assert.throws(() => parseGeocodingResult({ results: [{}] }), /latitude/);
+});
+
+test("resolveLocationByQuery queries the geocoding endpoint", async () => {
+  const calls: string[] = [];
+  const fakeFetch: FetchLike = async (input) => {
+    calls.push(String(input));
+    return jsonResponse(geocodingPayload);
+  };
+
+  const location = await resolveLocationByQuery("上海", { fetchImpl: fakeFetch });
+  assert.match(calls[0]!, /^https:\/\/geocoding-api\.open-meteo\.com\/v1\/search/);
+  assert.equal(location.displayName, "上海市");
+});
+
+test("parseCoordinateInput accepts coordinate pairs in both comma styles", () => {
+  const location = parseCoordinateInput("31.23,121.47");
+  assert.deepEqual(location, {
+    latitude: 31.23,
+    longitude: 121.47,
+    displayName: "31.23°N, 121.47°E",
+    source: "manual",
+  });
+
+  assert.equal(parseCoordinateInput("-33.87，151.21")?.displayName, "33.87°S, 151.21°E");
+  assert.equal(parseCoordinateInput(" 31.23 , 121.47 ")?.latitude, 31.23);
+});
+
+test("parseCoordinateInput rejects non-coordinates and out-of-range pairs", () => {
+  assert.equal(parseCoordinateInput("上海"), undefined);
+  assert.equal(parseCoordinateInput("31.23 121.47"), undefined);
+  assert.equal(parseCoordinateInput("91,121"), undefined);
+  assert.equal(parseCoordinateInput("31,181"), undefined);
+  assert.equal(parseCoordinateInput(""), undefined);
+});
+
+test("formatCoordinateLabel renders hemisphere suffixes", () => {
+  assert.equal(formatCoordinateLabel(31.2304, 121.4737), "31.23°N, 121.47°E");
+  assert.equal(formatCoordinateLabel(-33.8688, -151.2093), "33.87°S, 151.21°W");
 });
 
 test("each request can time out without an unhandled pending fetch", async () => {

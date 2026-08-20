@@ -210,6 +210,74 @@ test("an active refresh prevents overlapping interval refreshes", async () => {
   harness.runtime.dispose();
 });
 
+test("forceRefresh aborts the in-flight request and refetches immediately", async () => {
+  const first = deferred<WeatherSnapshot>();
+  const signals: AbortSignal[] = [];
+  let calls = 0;
+  const harness = createHarness({
+    fetchSnapshot: async (signal) => {
+      calls += 1;
+      signals.push(signal);
+      if (calls === 1) {
+        return new Promise<WeatherSnapshot>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      }
+      return makeSnapshot(new Date(harness.scheduler.now()).toISOString());
+    },
+  });
+  harness.runtime.start();
+  await flushPromises();
+  assert.equal(calls, 1);
+  assert.equal(harness.runtime.currentSnapshot, undefined);
+
+  await harness.runtime.forceRefresh();
+  await flushPromises();
+
+  assert.equal(calls, 2);
+  assert.equal(signals[0]?.aborted, true);
+  assert.equal(harness.runtime.currentSnapshot?.fetchedAt, "2026-08-19T06:00:00.000Z");
+  assert.deepEqual(harness.shown, [
+    { snapshot: harness.runtime.currentSnapshot, stale: false },
+  ]);
+  harness.runtime.dispose();
+});
+
+test("a late rejected forced-out request cannot hide the newer snapshot", async () => {
+  const first = deferred<WeatherSnapshot>();
+  let calls = 0;
+  const harness = createHarness({
+    fetchSnapshot: async (signal) => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise<WeatherSnapshot>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => setTimeout(() => reject(new Error("late abort")), 0),
+            { once: true },
+          );
+        });
+      }
+      return makeSnapshot(new Date(harness.scheduler.now()).toISOString());
+    },
+  });
+  harness.runtime.start();
+  await flushPromises();
+
+  await harness.runtime.forceRefresh();
+  first.resolve(makeSnapshot("2026-08-19T05:00:00.000Z"));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await flushPromises();
+
+  assert.equal(harness.runtime.currentSnapshot?.fetchedAt, "2026-08-19T06:00:00.000Z");
+  assert.equal(harness.shown.every((entry) => !entry.stale), true);
+  harness.runtime.dispose();
+});
+
 test("a slow cache read cannot overwrite a newer interval refresh", async () => {
   const pendingCache = deferred<WeatherSnapshot | undefined>();
   const fresh = makeSnapshot("2026-08-19T06:30:00.000Z");

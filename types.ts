@@ -7,6 +7,8 @@ export function normalizeTerminalSafeText(value: unknown): string | undefined {
   return text;
 }
 
+export type LocationSource = "ip" | "manual";
+
 export interface LocationInfo {
   city?: string;
   region?: string;
@@ -15,6 +17,7 @@ export interface LocationInfo {
   longitude: number;
   timezone?: string;
   displayName: string;
+  source?: LocationSource;
 }
 
 export interface CurrentWeather {

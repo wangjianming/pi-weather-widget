@@ -10,6 +10,7 @@
     "test": "node --test tests/*.test.ts",
     "test:api": "node --test tests/api.test.ts",
     "test:cache": "node --test tests/cache.test.ts",
+    "test:config": "node --test tests/config.test.ts",
     "test:formatter": "node --test tests/formatter.test.ts",
     "test:lifecycle": "node --test tests/lifecycle.test.ts"
   }
