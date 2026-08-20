@@ -68,7 +68,7 @@ Open-Meteo 默认的 `best_match` 组合可能挑到不契合当地实况的模�
 ```
 
 - 模型与固定位置存在同一配置文件中，固定定位与 IP 自动定位两种模式下均生效。
-- 模型 ID 经过白名单校验，只收录真正输出 WMO 天气代码的全球模型（`ecmwf_aifs025`/`gfs_graphcast025` 等 AI 模型不输出天气代码，故不收录）。
+- 模型 ID 经过白名单校验，只收录任意坐标都返回数据且输出 WMO 天气代码的模型（`ecmwf_aifs025`/`gfs_graphcast025` 等 AI 模型、`gfs_hrrr` 等域内限定模型不收录）。
 - 切换模型后缓存立即失效并重新拉取。
 
 ### 可选模型
@@ -84,6 +84,15 @@ Open-Meteo 默认的 `best_match` 组合可能挑到不契合当地实况的模�
 | `jma_seamless` | 日本气象厅 GSM/MSM |
 | `metno_seamless` | 挪威 MET 北欧模型 |
 | `ukmo_seamless` | 英国气象局 UM |
+| `gem_seamless` | 加拿大 GEM —— 全球可用，加拿大推荐 |
+| `knmi_seamless` | 荷兰 KNMI HARMONIE（本域高分辨率，域外全球兑底） |
+| `dmi_seamless` | 丹麦 DMI HARMONIE（本域高分辨率，域外全球兑底） |
+| `meteoswiss_icon_seamless` | 瑞士气象局 ICON（本域高分辨率，域外全球兑底） |
+| `geosphere_seamless` | 奥地利 GEORES AROME（本域高分辨率，域外全球兑底） |
+| `chmi_aladin_seamless` | 捷克 ALADIN（本域高分辨率，域外全球兑底） |
+| `arpae_cosmo_seamless` | 意大利 ARPAE COSMO（本域高分辨率，域外全球兑底） |
+
+刻意不收录：不输出 WMO 天气代码的模型（`ecmwf_aifs025`、`gfs_graphcast025`、`kma_seamless`、`bom_access_global` 等 AI/新模型），以及无全球兑底的域内限定模型（`gfs_hrrr`、`italia_meteo_arpae_icon_2i`）——上述 `_seamless` 系列已把各自域拼好。
 
 ## 工作原理
 

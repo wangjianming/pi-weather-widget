@@ -68,7 +68,7 @@ Open-Meteo's default `best_match` blend can pick a model that misrepresents your
 ```
 
 - The choice is stored alongside the pin in the same config file and applies to both pinned and IP-geolocated mode.
-- Model ids are validated against a curated allowlist of global models that actually output WMO weather codes (AI models like `ecmwf_aifs025`/`gfs_graphcast025` are excluded because they don't).
+- Model ids are validated against a curated allowlist: only models that work at any coordinate and output WMO weather codes are listed (AI models like `ecmwf_aifs025`/`gfs_graphcast025` and home-region-only models like `gfs_hrrr` are excluded).
 - Changing the model invalidates the cache and refetches immediately.
 
 ### Available models
@@ -84,6 +84,15 @@ Open-Meteo's default `best_match` blend can pick a model that misrepresents your
 | `jma_seamless` | Japan Meteorological Agency GSM/MSM |
 | `metno_seamless` | Norwegian MET Nordic |
 | `ukmo_seamless` | UK Met Office UM |
+| `gem_seamless` | Canadian GEM — global, recommended in Canada |
+| `knmi_seamless` | Netherlands KNMI HARMONIE (high-res at home, global fallback) |
+| `dmi_seamless` | Denmark DMI HARMONIE (high-res at home, global fallback) |
+| `meteoswiss_icon_seamless` | Swiss MeteoSwiss ICON (high-res at home, global fallback) |
+| `geosphere_seamless` | Austrian GEORES AROME (high-res at home, global fallback) |
+| `chmi_aladin_seamless` | Czech CHMI ALADIN (high-res at home, global fallback) |
+| `arpae_cosmo_seamless` | Italian ARPAE COSMO (high-res at home, global fallback) |
+
+Excluded on purpose: AI models (`ecmwf_aifs025`, `gfs_graphcast025`, `kma_seamless`, `bom_access_global`) that don't output WMO weather codes, and home-region-only models without a global fallback (`gfs_hrrr`, `italia_meteo_arpae_icon_2i`) — the `_seamless` blends above already stitch their domains.
 
 ## How it works
 
