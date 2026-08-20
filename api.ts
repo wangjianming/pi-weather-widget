@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 import {
   normalizeTerminalSafeText,
   type CurrentWeather,
@@ -144,6 +146,17 @@ export function buildGeocodingUrl(query: string): string {
   return url.toString();
 }
 
+export function parseIpInput(text: string): string | undefined {
+  const trimmed = text.trim();
+  return isIP(trimmed) === 0 ? undefined : trimmed;
+}
+
+export function buildIpLookupUrl(ip: string): string {
+  const url = new URL(IPWHOIS_URL);
+  url.pathname = `/${encodeURIComponent(ip)}`;
+  return url.toString();
+}
+
 export function formatCoordinateLabel(latitude: number, longitude: number): string {
   const lat = `${Math.abs(latitude).toFixed(2)}°${latitude >= 0 ? "N" : "S"}`;
   const lon = `${Math.abs(longitude).toFixed(2)}°${longitude >= 0 ? "E" : "W"}`;
@@ -239,6 +252,21 @@ export async function resolveLocationByQuery(
     timeoutMs,
   );
   return parseGeocodingResult(payload);
+}
+
+export async function resolveLocationByIp(
+  ip: string,
+  options: ResolveLocationOptions = {},
+): Promise<LocationInfo> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const payload = await requestJson(
+    buildIpLookupUrl(ip),
+    fetchImpl,
+    options.signal,
+    timeoutMs,
+  );
+  return { ...parseLocation(payload), source: "manual" };
 }
 
 export async function fetchWeatherSnapshot(

@@ -3,13 +3,16 @@ import test from "node:test";
 
 import {
   buildGeocodingUrl,
+  buildIpLookupUrl,
   buildWeatherUrl,
   fetchWeatherSnapshot,
   formatCoordinateLabel,
   parseCoordinateInput,
   parseCurrentWeather,
   parseGeocodingResult,
+  parseIpInput,
   parseLocation,
+  resolveLocationByIp,
   resolveLocationByQuery,
 } from "../api.ts";
 import type { FetchLike } from "../types.ts";
@@ -236,6 +239,49 @@ test("parseCoordinateInput rejects non-coordinates and out-of-range pairs", () =
 test("formatCoordinateLabel renders hemisphere suffixes", () => {
   assert.equal(formatCoordinateLabel(31.2304, 121.4737), "31.23°N, 121.47°E");
   assert.equal(formatCoordinateLabel(-33.8688, -151.2093), "33.87°S, 151.21°W");
+});
+
+test("parseIpInput accepts valid IPv4 and IPv6 and rejects everything else", () => {
+  assert.equal(parseIpInput("8.8.8.8"), "8.8.8.8");
+  assert.equal(parseIpInput(" 114.114.114.114 "), "114.114.114.114");
+  assert.equal(parseIpInput("2001:4860:4860::8888"), "2001:4860:4860::8888");
+  assert.equal(parseIpInput("上海"), undefined);
+  assert.equal(parseIpInput("31.23,121.47"), undefined);
+  assert.equal(parseIpInput("8.8.8.256"), undefined);
+  assert.equal(parseIpInput("192.168.1"), undefined);
+  assert.equal(parseIpInput(""), undefined);
+});
+
+test("buildIpLookupUrl keeps the query string and embeds the IP in the path", () => {
+  const url = new URL(buildIpLookupUrl("8.8.8.8"));
+  assert.equal(url.origin + url.pathname, "https://ipwho.is/8.8.8.8");
+  assert.equal(url.searchParams.get("lang"), "zh-CN");
+  assert.equal(url.searchParams.get("fields"), "success,message,city,region,country,latitude,longitude,timezone");
+
+  const v6 = new URL(buildIpLookupUrl("2001:4860:4860::8888"));
+  assert.equal(decodeURIComponent(v6.pathname), "/2001:4860:4860::8888");
+});
+
+test("resolveLocationByIp looks up the given IP and marks the result manual", async () => {
+  const calls: string[] = [];
+  const fakeFetch: FetchLike = async (input) => {
+    calls.push(String(input));
+    return jsonResponse({ ...locationPayload, city: "Ashburn" });
+  };
+
+  const location = await resolveLocationByIp("8.8.8.8", { fetchImpl: fakeFetch });
+  assert.match(calls[0]!, /^https:\/\/ipwho\.is\/8\.8\.8\.8\?/);
+  assert.equal(location.displayName, "Ashburn");
+  assert.equal(location.source, "manual");
+});
+
+test("resolveLocationByIp surfaces lookup failures for unknown addresses", async () => {
+  const fakeFetch: FetchLike = async () =>
+    jsonResponse({ success: false, message: "Invalid IP address" });
+  await assert.rejects(
+    resolveLocationByIp("192.168.1.1", { fetchImpl: fakeFetch }),
+    /Invalid IP address/,
+  );
 });
 
 test("each request can time out without an unhandled pending fetch", async () => {

@@ -6,6 +6,8 @@ import {
   fetchWeatherSnapshot,
   formatCoordinateLabel,
   parseCoordinateInput,
+  parseIpInput,
+  resolveLocationByIp,
   resolveLocationByQuery,
 } from "./api.ts";
 import {
@@ -31,6 +33,7 @@ const USAGE = [
   "用法：",
   "  /weather set <城市名>   固定位置（例：/weather set 上海）",
   "  /weather set <纬度,经度> 固定位置（例：/weather set 31.23,121.47）",
+  "  /weather set <IP>      按该 IP 解析并固定（例：/weather set 114.114.114.114）",
   "  /weather auto          清除配置，恢复 IP 自动定位",
   "  /weather               查看当前定位模式",
 ].join("\n");
@@ -110,7 +113,7 @@ export default function weatherWidgetExtension(pi: ExtensionAPI): void {
     description: "配置天气组件定位：set 城市/坐标、auto 恢复 IP 定位、无参数查看状态",
     getArgumentCompletions: (prefix: string) => {
       const items = [
-        { value: "set ", label: "set", description: "固定位置（城市名或 纬度,经度）" },
+        { value: "set ", label: "set", description: "固定位置（城市名、IP 或 纬度,经度）" },
         { value: "auto", label: "auto", description: "清除配置，恢复 IP 自动定位" },
       ];
       const filtered = items.filter((item) => item.value.startsWith(prefix));
@@ -159,14 +162,23 @@ export default function weatherWidgetExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      const location =
-        parseCoordinateInput(query) ??
-        await resolveLocationByQuery(query, { timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS }).catch(
-          () => undefined,
-        );
+      let location: LocationInfo | undefined = parseCoordinateInput(query);
+      if (!location) {
+        const ip = parseIpInput(query);
+        if (ip) {
+          location = await resolveLocationByIp(ip, {
+            timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+          }).catch(() => undefined);
+        }
+      }
+      if (!location) {
+        location = await resolveLocationByQuery(query, {
+          timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+        }).catch(() => undefined);
+      }
       if (!location) {
         ctx.ui.notify(
-          `无法解析位置“${query}”：请使用“纬度,经度”坐标，或改用 Open-Meteo 可识别的城市名`,
+          `无法解析位置“${query}”：请使用“纬度,经度”坐标、公网 IP，或改用 Open-Meteo 可识别的城市名`,
           "error",
         );
         return;

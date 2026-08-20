@@ -47,6 +47,7 @@ git clone https://github.com/wangjianming/pi-weather-widget.git ~/.pi/agent/exte
 
 ```
 /weather set 上海        # 固定城市（经 Open-Meteo 免费地理编码 API 解析）
+/weather set 8.8.8.8        # 或按公网 IP 解析并固定（经 IPWhois）
 /weather set 31.23,121.47  # 或直接固定坐标
 /weather auto           # 清除固定，恢复 IP 自动定位
 /weather                 # 查看当前模式与固定位置

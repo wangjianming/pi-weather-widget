@@ -47,6 +47,7 @@ When your public IP points at a VPN exit, automatic geolocation shows the wrong 
 
 ```
 /weather set 上海        # pin a city (resolved via Open-Meteo's free geocoding API)
+/weather set 8.8.8.8        # ...or resolve any public IP to a location and pin it
 /weather set 31.23,121.47  # ...or pin raw coordinates
 /weather auto           # clear the pin and restore IP-based geolocation
 /weather                 # show the current mode and fixed position
